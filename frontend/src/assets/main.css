@@ -1,0 +1,137 @@
+/* frontend/src/assets/main.css */
+
+/* 1. 定義 Gartic 的標準色票變數 */
+:root {
+  /* 背景深藍色 (Gartic 的宇宙藍) */
+  --gartic-bg: #181542; 
+  
+  /* LOGO 下面的副標題顏色 */
+  --gartic-text-gray: #6E7C91;
+
+  /* 綠色按鈕 (Play) - 漸層感 */
+  --btn-green-face: #37C250;   /* 按鈕表面 */
+  --btn-green-shadow: #248C36; /* 按鈕底部陰影 (厚度) */
+
+  /* 藍色按鈕 (頭像切換/其他功能) */
+  --btn-blue-face: #1d508f;
+  --btn-blue-shadow: #2B6ADB;
+
+  /* 輸入框顏色 */
+  --input-bg: #f6f8fa;
+  --input-border: #DCE3E8;
+}
+
+/* 2. 全局設定 */
+body {
+  margin: 0;
+  font-family: 'Rubik', 'Arial', sans-serif; /* Gartic 風格字體 */
+  background-color: var(--gartic-bg); /* 套用深藍色背景 */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  overflow: hidden; /* 防止捲軸出現 */
+}
+
+/* 3. 中間的白色大卡片 (登入框) */
+.main-card, #game-container {
+  background: white;
+  width: 90%;
+  max-width: 750px;
+  border-radius: 20px;
+  padding: 40px;
+  text-align: center;
+  
+  /* 讓卡片有點浮起來的感覺 */
+  box-shadow: 0 10px 0px rgba(0, 0, 0, 0.2); 
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* 4. Gartic 風格的 LOGO 文字 */
+h1 {
+  font-size: 3.5rem;
+  font-weight: 900;
+  color: #384967;
+  margin: 0;
+  letter-spacing: -1px;
+}
+
+h1 span.highlight {
+  color: #FFC000; /* 黃色 highlight */
+}
+
+/* 5. 那顆綠色的巨大按鈕 */
+.btn-play, .btn-poker {
+  background-color: var(--btn-green-face);
+  color: white;
+  font-size: 1.6rem;
+  font-weight: 800;
+  
+  /* 這裡就是 Gartic 按鈕「厚度」的秘密 */
+  border: none;
+  border-bottom: 8px solid var(--btn-green-shadow); 
+  
+  border-radius: 12px;
+  padding: 15px 60px; /* 讓按鈕寬一點 */
+  cursor: pointer;
+  margin-top: 20px;
+  transition: all 0.1s;
+  width: 100%; /* 手機版全寬 */
+  max-width: 300px; /* 電腦版限制寬度 */
+}
+
+/* 按下去的動畫效果 */
+.btn-play:active, .btn-poker:active {
+  transform: translateY(8px); /* 往下沉 8px */
+  border-bottom-width: 0px;   /* 底部陰影消失，模擬被壓扁 */
+  box-shadow: inset 0 3px 5px rgba(0,0,0,0.2);
+}
+
+/* 6. 輸入框 (暱稱) */
+input[type="text"] {
+  background: var(--input-bg);
+  border: 3px solid var(--input-border);
+  border-radius: 12px;
+  padding: 15px;
+  font-size: 1.3rem;
+  font-weight: bold;
+  color: #333;
+  width: 200%;
+  max-width: 280px;
+  text-align: center;
+  outline: none;
+  margin-bottom: 10px;
+  transition: border-color 0.2s;
+}
+
+input[type="text"]:focus {
+  border-color: #4892FF; /* 聚焦時變藍色 */
+}
+
+/* 7. 頭像圓圈 (Player Slot) */
+.player-slot {
+  position: absolute; /* 讓它能浮在桌子周圍 */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transition: all 0.5s ease;
+}
+
+.avatar {
+  width: 70px; height: 70px;
+  background: white;
+  border-radius: 50%;
+  border: 4px solid white;
+  box-shadow: 0 4px 0 rgba(0,0,0,0.1);
+  display: flex; justify-content: center; align-items: center;
+  font-size: 35px;
+  z-index: 10;
+}
+
+/* 輪到該玩家時：黃色光圈 */
+.is-active .avatar {
+  border-color: #FFC000;
+  box-shadow: 0 0 15px #FFC000;
+}
