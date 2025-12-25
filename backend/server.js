@@ -97,9 +97,13 @@ io.on('connection', (socket) => {
         const result = game.handlePlayerAction(socket.id, type, amount);
 
         if (result.success) {
+
             // 動作合法，廣播最新的盤面狀態給所有人
             io.to(roomId).emit('roomUpdated', {
-                players: game.players.map(p => p.getPublicData()), // 記得用 getPublicData
+                players: game.players.map(p => {
+                    const shouldShow = game.gameState === 'SHOWDOWN' && p.status !== 'FOLDED';
+                    return p.getPublicData(shouldShow);
+                }),
                 gameState: game.gameState,
                 pot: game.pot,             // 當前底池
                 communityCards: game.getPublicCommunityCards(), // 公用牌 (或是用 game.getPublicCommunityCards())
