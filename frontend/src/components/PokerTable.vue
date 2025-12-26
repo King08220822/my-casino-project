@@ -160,8 +160,8 @@ import { ref, computed, onMounted, onUnmounted, reactive } from 'vue';
 import PlayerSlot from './PlayerSlot.vue'; 
 import socket from '../services/socket'; 
 
-const props = defineProps(['roomData']);
-defineEmits(['leave']);
+const props = defineProps(['roomData', 'roomId']);
+const emit = defineEmits(['leave']);
 
 // --- 狀態變數 ---
 const gameResult = ref(null);
@@ -315,14 +315,17 @@ const getSeatStyle = (index, totalOthers) => {
 };
 
 // --- 按鈕動作 ---
-const startGame = () => socket.emit('startGame', 'poker_table_1'); 
+const startGame = () => {
+  console.log("嘗試開始遊戲，房間ID:", props.roomId); // 加個 log 方便除錯
+  socket.emit('startGame', props.roomId); 
+};
 const sendAction = (type, amount = 0) => {
   if (type === 'toggle-raise') {
     raiseAmount.value = minRaise.value;
     showRaiseSlider.value = true;
     return;
   }
-  socket.emit('action', { roomId: 'poker_table_1', type, amount });
+  socket.emit('action', { roomId: props.roomId, type, amount });
   showRaiseSlider.value = false;
 };
 </script>

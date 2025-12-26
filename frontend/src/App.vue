@@ -3,13 +3,13 @@ import { ref, onMounted } from 'vue';
 import Lobby from './components/Lobby.vue';
 import PokerTable from './components/PokerTable.vue';
 import socket from './services/socket';
-// 引入 RoomList
 import RoomList from './components/RoomList.vue';
 import InteractiveBackground from './components/InteractiveBackground.vue';
 
 // 狀態機 (LOBBY -> ROOM_LIST -> PLAYING)
 const currentView = ref('LOBBY');
 const roomData = ref(null);
+const currentRoomId = ref(''); // 用來存目前所在的房間 ID
 
 // 3. 監聽後端數據
 onMounted(() => {
@@ -18,9 +18,8 @@ onMounted(() => {
     roomData.value = data;
   });
 
-  // ▼▼▼ 【修正重點】監聽加入成功訊號 ▼▼▼
-  // 只有收到這個，才會切換畫面到遊戲桌
-  socket.on('joinSuccess', () => {
+  // 監聽加入成功訊號
+  socket.on('joinSuccess', ({ roomId }) => { // 也可以這裡接收 roomId 確保同步
     currentView.value = 'PLAYING';
   });
 
@@ -34,13 +33,15 @@ const selectGame = (type) => {
     if (name) {
        currentView.value = 'ROOM_LIST'; 
     } else {
-       // 如果沒名字，理論上應該擋在 Lobby，這裡只是防呆
        alert("請先輸入暱稱");
     }
   }
 };
 
 const handleJoinRoom = ({ roomId, password }) => {
+    // ▼▼▼ 【修正 1】記住房間 ID！ ▼▼▼
+    currentRoomId.value = roomId; 
+    
     const nickname = sessionStorage.getItem('player_nickname');
     const avatar = sessionStorage.getItem('player_avatar');
 
@@ -53,24 +54,21 @@ const handleJoinRoom = ({ roomId, password }) => {
     });
 };
 
-// 從房間列表返回大廳
 const backToLobby = () => {
   currentView.value = 'LOBBY';
 };
 
-// 從遊戲桌離開 (通常是回到房間列表比較合理，看你需求)
 const leaveGame = () => {
-  socket.emit('leaveRoom'); // 通知後端離開
-  currentView.value = 'ROOM_LIST'; // 回到房間列表
+  socket.emit('leaveRoom'); 
+  currentView.value = 'ROOM_LIST'; 
   roomData.value = null;
+  currentRoomId.value = ''; // 離開時清空 ID
 };
 </script>
 
 <template>
   <div class="game-wrapper">
-    
     <InteractiveBackground />
-
     <transition name="view-fade" mode="out-in">
       
       <Lobby 
@@ -87,6 +85,7 @@ const leaveGame = () => {
       <PokerTable 
         v-else-if="currentView === 'PLAYING'" 
         :room-data="roomData" 
+        :room-id="currentRoomId"
         @leave="leaveGame"
       />
 
@@ -95,10 +94,8 @@ const leaveGame = () => {
 </template>
 
 <style>
-/* 引入 Gartic 風格全域樣式 */
 @import "./assets/main.css"; 
 
-/* 轉場動畫 */
 .view-fade-enter-active,
 .view-fade-leave-active {
   transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
