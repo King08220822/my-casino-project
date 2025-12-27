@@ -13,8 +13,6 @@ class Player {
         // ▼▼▼ 這裡會儲存真正傳進來的圖片 (例如 /avatars/6.jpg) ▼▼▼
         this.avatar = avatar; 
 
-        this.isBot = false;
-
         // --- 2. 資產與手牌 ---
         this.chips = chips;
         this.cards = [];
@@ -60,7 +58,6 @@ class Player {
             roundBet: this.roundBet,
             isDealer: this.isDealer,
             isTurn: this.isTurn,
-            isBot: this.isBot,
             cards: isShowdown ? this.cards : null, 
             hasCards: this.cards.length > 0 
         };

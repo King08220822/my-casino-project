@@ -54,14 +54,26 @@ class RoomManager {
         const game = this.rooms[roomId];
         if (!game) return null;
 
-        game.removePlayer(socketId);
+        // ▼▼▼ 修改點 3: 接收被刪除的玩家並處理房主轉移 ▼▼▼
+        const removedPlayer = game.removePlayer(socketId);
         
-        // 如果房間空了，就刪除
-        if (game.players.length === 0) {
-            delete this.rooms[roomId];
-            console.log(`[RoomManager] 房間 ${roomId} 已清空並刪除`);
-            return null; // 房間沒了
+        if (removedPlayer) {
+            console.log(`[RoomManager] 玩家 ${removedPlayer.name} 離開房間 ${roomId}`);
+
+            // 如果房間空了，就刪除
+            if (game.players.length === 0) {
+                delete this.rooms[roomId];
+                console.log(`[RoomManager] 房間 ${roomId} 已清空並刪除`);
+                return null; // 房間沒了，回傳 null
+            }
+
+            // 【關鍵】如果離開的人是房主，將權限交給下一位 (陣列第 0 人)
+            if (game.hostId === socketId && game.players.length > 0) {
+                game.hostId = game.players[0].id;
+                console.log(`[RoomManager] 👑 房主變更為: ${game.players[0].name}`);
+            }
         }
+        // ▲▲▲ ▲▲▲
 
         return game; // 回傳遊戲物件，讓外部可以廣播更新
     }

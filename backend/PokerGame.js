@@ -1,5 +1,5 @@
 const BaseGame = require('./BaseGame');
-const Deck = require('./deck');
+const Deck = require('./Deck');
 const HandEvaluator = require('./HandEvaluator');
 
 class PokerGame extends BaseGame {
@@ -84,10 +84,20 @@ class PokerGame extends BaseGame {
 
         // 2. 決定莊家、小盲、大盲位置
         // 簡單輪替：每局莊家往後移一位 (這裡先簡化，固定邏輯)
-        this.dealerIndex = this._findNextActivePlayer(this.dealerIndex);// 如果莊家是旁觀者，繼續找下一位
+        let sbIndex, bbIndex;
 
-        const sbIndex = (this.dealerIndex + 1) % this.players.length;
-        const bbIndex = (this.dealerIndex + 2) % this.players.length;
+        if (activeCount === 2) {
+            // --- 情況一：單挑 (Heads-Up) ---
+            // 莊家 = 小盲 (SB)
+            // 對手 = 大盲 (BB)
+            sbIndex = this.dealerIndex;
+            bbIndex = this._findNextActivePlayer(this.dealerIndex);
+        } else {
+            // --- 情況二：多人局 (Standard) ---
+            // 莊家 -> 小盲 -> 大盲
+            sbIndex = this._findNextActivePlayer(this.dealerIndex);
+            bbIndex = this._findNextActivePlayer(sbIndex);
+        }
 
         // 3. 強制扣盲注
         this._postBlind(sbIndex, this.smallBlind);
@@ -103,6 +113,15 @@ class PokerGame extends BaseGame {
                 p.isShowingCards = false;
             }
         });
+
+        //決定誰先說話 (Preflop Action)
+        if (activeCount === 2) {
+            // 單挑：莊家(兼小盲) 先說話
+            this.currentTurnIndex = sbIndex;
+        } else {
+            // 多人：大盲的下一家 (UTG) 先說話
+            this.currentTurnIndex = this._findNextActivePlayer(bbIndex);
+        }
 
         // 槍口位 (UTG) 先說話：大盲的下一位
         this.currentTurnIndex = (bbIndex + 1) % this.players.length; 

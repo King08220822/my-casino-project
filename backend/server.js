@@ -81,7 +81,7 @@ io.on('connection', (socket) => {
             
             // 發私有牌
             game.players.forEach(p => {
-                if (!p.isBot) io.to(p.id).emit('receiveCards', { myCards: p.cards });
+                io.to(p.id).emit('receiveCards', { myCards: p.cards });
             });
 
             // 更新公開資訊
@@ -105,21 +105,22 @@ io.on('connection', (socket) => {
         if (!game) return;
 
         const result = game.handlePlayerAction(socket.id, type, amount);
+        
         if (result.success) {
-            // ... (這裡邏輯跟原本一樣，發送 roomUpdated, gameEnded 等) ...
-            // 為了節省篇幅，這裡省略中間的廣播邏輯，請將原本的 action 邏輯複製過來即可
-            // 只需要把 rooms[roomId] 改成 game 變數
-             io.to(roomId).emit('roomUpdated', {
-                players: game.players.map(p => p.getPublicData(game.gameState === 'SHOWDOWN')),
+            // 1. 動作合法，廣播盤面更新
+            io.to(roomId).emit('roomUpdated', {
+                players: game.players.map(p => p.getPublicData(game.gameState === 'SHOWDOWN')), 
                 gameState: game.gameState,
                 pot: game.pot,
                 communityCards: game.getPublicCommunityCards(),
                 currentTurn: game.currentTurnPlayerId
             });
             
+            // 2. 檢查是否進入結算 (Showdown)
             if (game.gameState === 'SHOWDOWN') {
-                // ... (結算邏輯同原版) ...
-                 const rankings = game.players
+                
+                // 製作排行榜
+                const rankings = game.players
                     .map(p => ({
                         id: p.id,
                         name: p.name,
@@ -128,33 +129,78 @@ io.on('connection', (socket) => {
                     }))
                     .sort((a, b) => b.chips - a.chips);
                      
-                 io.to(roomId).emit('gameEnded', { 
-                     winners: game.lastRoundWinners,
-                     rankings: rankings,
-                     newGameCountdown: 5
-                 });
-                 
-                 setTimeout(() => {
-                    if (game) {
-                         game.beginGame(); 
+                // 廣播結算資訊
+                io.to(roomId).emit('gameEnded', { 
+                    winners: game.lastRoundWinners,
+                    rankings: rankings,
+                    newGameCountdown: 5 // 告訴前端倒數 5 秒
+                });
+
+                // --- 5 秒後自動開始新局 (包含踢人邏輯) ---
+                setTimeout(() => {
+                    // 重新從 Manager 獲取遊戲實例 (確保房間還活著)
+                    // 注意：這裡不能只用原本的 game 變數，因為如果房間被刪了，操作會出錯
+                    const liveGame = roomManager.getGame(roomId);
+
+                    if (liveGame) {
+                        // ▼▼▼ 【新增】踢除破產玩家邏輯 ▼▼▼
+                        // 1. 找出籌碼 <= 0 的玩家 (必須在 beginGame 之前做)
+                        const brokePlayers = liveGame.players.filter(p => p.chips <= 0);
+
+                        brokePlayers.forEach(p => {
+                            console.log(`💸 玩家 ${p.name} 破產，踢出房間`);
+                            
+                            // A. 呼叫 Manager 執行離開 (處理陣列移除、房主轉移、刪除空房)
+                            roomManager.leaveRoom(roomId, p.id);
+
+                            // B. 通知該玩家 (前端收到 kicked 事件要跳轉回大廳)
+                            io.to(p.id).emit('kicked', { msg: '您的籌碼已歸零，請重新加入遊戲！' });
+                            
+                            // C. 強制讓 Socket 離開頻道 (這樣他就收不到下一局的牌了)
+                            const socketInfo = io.sockets.sockets.get(p.id);
+                            if (socketInfo) {
+                                socketInfo.leave(roomId);
+                            }
+                        });
+
+                        // 踢完人後，再次檢查房間是否還存在 (如果所有人都破產被踢光了)
+                        if (!roomManager.getGame(roomId)) return;
+                        // ▲▲▲ ▲▲▲
+
+                        console.log(`房間 ${roomId} 自動開始下一局...`);
+                        
+                        // 1. 重置並開始新局 (破產的人已經不在 liveGame.players 裡了)
+                        liveGame.beginGame(); 
+
+                        // 2. 廣播新局開始
                         io.to(roomId).emit('gameStarted', { gameState: 'PLAYING' });
 
-                        game.players.forEach(p => {
-                            if (p.status !== 'SIT_OUT' && !p.isBot) {
+                        // 3. 發新牌 (只發給還在且非機器人的)
+                        liveGame.players.forEach(p => {
+                            if (p.status !== 'SIT_OUT') {
                                 io.to(p.id).emit('receiveCards', { myCards: p.cards });
                             }
                         });
 
+                        // 4. 更新畫面 (因為人數變了，Host可能變了，這裡會同步更新)
                         io.to(roomId).emit('roomUpdated', {
-                            players: game.players.map(p => p.getPublicData()),
-                            gameState: game.gameState,
-                            pot: game.pot,
+                            players: liveGame.players.map(p => p.getPublicData()),
+                            gameState: liveGame.gameState,
+                            pot: liveGame.pot,
                             communityCards: [], 
-                            currentTurn: game.currentTurnPlayerId
+                            currentTurn: liveGame.currentTurnPlayerId,
+                            hostId: liveGame.hostId // 更新房主
                         });
+
+                        // 5. 因為有人被踢，大廳列表的人數也要更新
+                        io.emit('roomListUpdate');
                     }
-                }, 5000);
+                }, 5000); 
             }
+
+        } else {
+            // 動作非法
+            socket.emit('errorMsg', result.msg);
         }
     });
 
