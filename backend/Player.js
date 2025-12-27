@@ -26,6 +26,8 @@ class Player {
         this.isDealer = false;
         this.isTurn = false;
         this.hasActed = false;
+
+        this.isReady = true;
     }
 
     resetForNewHand() {
@@ -59,7 +61,9 @@ class Player {
             isDealer: this.isDealer,
             isTurn: this.isTurn,
             cards: isShowdown ? this.cards : null, 
-            hasCards: this.cards.length > 0 
+            hasCards: this.cards.length > 0,
+
+            isReady: this.isReady
         };
     }
 }

@@ -51,6 +51,13 @@ class PokerGame extends BaseGame {
         if (this.players.length < this.minPlayers) return { success: false, msg: "人數不足 2 人" };
         if (this.gameState !== 'LOBBY') return { success: false, msg: "遊戲已在進行中" };
 
+        const unreadyPlayers = this.players.filter(p => !p.isReady);
+        if (unreadyPlayers.length > 0) {
+            // 回傳誰沒準備好，讓前端顯示
+            const names = unreadyPlayers.map(p => p.name).join(', ');
+            return { success: false, msg: `等待玩家準備中: ${names}` };
+        }
+
         this.beginGame();
         return { success: true };
     }
@@ -82,6 +89,18 @@ class PokerGame extends BaseGame {
             return;
         }
 
+        if (this.dealerIndex >= this.players.length || this.dealerIndex < 0) {
+            this.dealerIndex = -1;
+        }
+
+        // 決定莊家 (往後移一位)
+        this.dealerIndex = this._findNextActivePlayer(this.dealerIndex);
+        
+        // 更新 isDealer 狀態給前端
+        this.players.forEach((p, index) => {
+            p.isDealer = (index === this.dealerIndex);
+        });
+
         // 2. 決定莊家、小盲、大盲位置
         // 簡單輪替：每局莊家往後移一位 (這裡先簡化，固定邏輯)
         let sbIndex, bbIndex;
@@ -104,7 +123,7 @@ class PokerGame extends BaseGame {
         this._postBlind(bbIndex, this.bigBlind);
 
         // 4. 設定起始狀態
-        this.currentBet = this.bigBlind; // 現在場上最高注是 20
+        this.currentBet = this.bigBlind;
 
         // 5. 每位玩家抽兩張牌
         this.players.forEach(p => {
@@ -124,7 +143,8 @@ class PokerGame extends BaseGame {
         }
 
         // 槍口位 (UTG) 先說話：大盲的下一位
-        this.currentTurnIndex = (bbIndex + 1) % this.players.length; 
+        //刪除下面這行！它會覆蓋掉上面正確的 2 人局邏輯
+        //this.currentTurnIndex = (bbIndex + 1) % this.players.length; 
         
         // 標記當前玩家
         this._updateTurnStatus();
@@ -144,6 +164,8 @@ class PokerGame extends BaseGame {
 
         // B. 動作邏輯處理
         let resultMsg = '';
+        // 用來記錄這次動作涉及的金額 (給前端顯示用)
+        let actionValue = 0;
 
         switch (actionType) {
             case 'fold':
@@ -168,6 +190,8 @@ class PokerGame extends BaseGame {
                 }
                 this._placeBet(currentPlayer, callAmount);
                 resultMsg = `${currentPlayer.name} 跟注 ${callAmount}`;
+                // 記錄跟注金額
+                actionValue = callAmount;
                 break;
 
             case 'raise':
@@ -183,6 +207,8 @@ class PokerGame extends BaseGame {
                 // 加注會導致這一輪的結束點重置 (所有人都要重新表態)
                 this._resetHasActedForRaise(currentPlayer.id);
                 resultMsg = `${currentPlayer.name} 加注至 ${totalBet}`;
+                // 記錄加注後的總金額 (顯示 Raise $500 比較直覺)
+                actionValue = totalBet;
                 break;
                 
             case 'allin':
@@ -194,6 +220,8 @@ class PokerGame extends BaseGame {
                     this._resetHasActedForRaise(currentPlayer.id);
                 }
                 resultMsg = `${currentPlayer.name} All-in!`;
+                // 記錄 All-in 金額 (雖然前端通常只顯示 All-in 字樣)
+                actionValue = allInAmount;
                 break;
 
             default:
@@ -206,7 +234,7 @@ class PokerGame extends BaseGame {
 
         // C. 檢查是否只剩一人 (其他人全 Fold)
         if (this._checkWinByFold()) {
-            return { success: true, action: actionType };
+            return { success: true, action: actionType, val: actionValue };
         }
 
         // D. 判斷這一輪 (Street) 是否結束，還是換下一個人
@@ -216,7 +244,7 @@ class PokerGame extends BaseGame {
             this.nextTurn();
         }
 
-        return { success: true, action: actionType };
+        return { success: true, action: actionType, val: actionValue };
     }
 
     // --- 3. 內部輔助邏輯 ---
@@ -238,6 +266,12 @@ class PokerGame extends BaseGame {
     // 扣盲注
     _postBlind(playerIndex, amount) {
         const player = this.players[playerIndex];
+
+        // 防呆，如果找不到該位置的玩家，直接返回，防止崩潰
+        if (!player) {
+            console.error(`錯誤: 嘗試扣除無效玩家索引 ${playerIndex} 的盲注`);
+            return;
+        }
         // 如果玩家錢不夠盲注，就 All-in
         const actualAmount = Math.min(player.chips, amount);
         this._placeBet(player, actualAmount);
@@ -457,6 +491,39 @@ class PokerGame extends BaseGame {
         this.pot = 0;
 
         return result;
+    }
+
+    resetToLobby() {
+        this.gameState = 'LOBBY';
+        this.gameStage = 'LOBBY';
+        this.pot = 0;
+        this.currentBet = 0;
+        this.communityCards = [];
+        this.lastRoundWinners = [];
+        
+        // 重置玩家狀態
+        this.players.forEach(p => {
+             // 確保破產的人已經在 server.js 被踢除了
+             if (p.chips <= 0) {
+                 p.status = 'SIT_OUT';
+             } else {
+                 // 清空手牌，狀態改為 WAITING (在大廳等房主按開始)
+                 p.cards = [];
+                 p.roundBet = 0;
+                 p.totalHandBet = 0;
+                 p.isTurn = false;
+                 p.hasActed = false;
+                 p.status = 'WAITING'; 
+
+                 // 如果是房主，預設為 true (因為他不用按準備，他負責按開始)
+                 // 如果是閒家，預設為 false (要選繼續遊玩)
+                 if (p.id === this.hostId) {
+                     p.isReady = true;
+                 } else {
+                     p.isReady = false; 
+                 }
+             }
+        });
     }
 }
 

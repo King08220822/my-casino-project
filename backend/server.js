@@ -107,6 +107,12 @@ io.on('connection', (socket) => {
         const result = game.handlePlayerAction(socket.id, type, amount);
         
         if (result.success) {
+            // 我們把 playerId, action(類型), val(金額) 傳給所有人
+            io.to(roomId).emit('playerActed', {
+                playerId: socket.id,
+                action: result.action,
+                value: result.val
+            });
             // 1. 動作合法，廣播盤面更新
             io.to(roomId).emit('roomUpdated', {
                 players: game.players.map(p => p.getPublicData(game.gameState === 'SHOWDOWN')), 
@@ -146,7 +152,6 @@ io.on('connection', (socket) => {
                         // ▼▼▼ 【新增】踢除破產玩家邏輯 ▼▼▼
                         // 1. 找出籌碼 <= 0 的玩家 (必須在 beginGame 之前做)
                         const brokePlayers = liveGame.players.filter(p => p.chips <= 0);
-
                         brokePlayers.forEach(p => {
                             console.log(`💸 玩家 ${p.name} 破產，踢出房間`);
                             
@@ -158,49 +163,59 @@ io.on('connection', (socket) => {
                             
                             // C. 強制讓 Socket 離開頻道 (這樣他就收不到下一局的牌了)
                             const socketInfo = io.sockets.sockets.get(p.id);
-                            if (socketInfo) {
-                                socketInfo.leave(roomId);
-                            }
+                            if (socketInfo) socketInfo.leave(roomId);
                         });
 
                         // 踢完人後，再次檢查房間是否還存在 (如果所有人都破產被踢光了)
                         if (!roomManager.getGame(roomId)) return;
-                        // ▲▲▲ ▲▲▲
 
                         console.log(`房間 ${roomId} 自動開始下一局...`);
                         
                         // 1. 重置並開始新局 (破產的人已經不在 liveGame.players 裡了)
-                        liveGame.beginGame(); 
+                        liveGame.resetToLobby(); 
 
-                        // 2. 廣播新局開始
-                        io.to(roomId).emit('gameStarted', { gameState: 'PLAYING' });
-
-                        // 3. 發新牌 (只發給還在且非機器人的)
-                        liveGame.players.forEach(p => {
-                            if (p.status !== 'SIT_OUT') {
-                                io.to(p.id).emit('receiveCards', { myCards: p.cards });
-                            }
-                        });
-
-                        // 4. 更新畫面 (因為人數變了，Host可能變了，這裡會同步更新)
+                        // 廣播更新 (狀態變回 LOBBY)
+                        // 前端收到這個後，如果是房主會看到「開始按鈕」，閒家會看到「繼續/退出」
                         io.to(roomId).emit('roomUpdated', {
                             players: liveGame.players.map(p => p.getPublicData()),
                             gameState: liveGame.gameState,
                             pot: liveGame.pot,
                             communityCards: [], 
-                            currentTurn: liveGame.currentTurnPlayerId,
-                            hostId: liveGame.hostId // 更新房主
+                            currentTurn: null,
+                            hostId: liveGame.hostId
                         });
-
-                        // 5. 因為有人被踢，大廳列表的人數也要更新
+                        
+                        // 更新大廳列表狀態 (變回等待中)
                         io.emit('roomListUpdate');
                     }
-                }, 5000); 
+                }, 10000); 
             }
 
         } else {
             // 動作非法
             socket.emit('errorMsg', result.msg);
+        }
+    });
+
+    socket.on('playerReady', (roomId) => {
+        const game = roomManager.getGame(roomId);
+        if (!game) return;
+
+        const player = game.players.find(p => p.id === socket.id);
+        if (player) {
+            player.isReady = true; // 標記為準備好
+
+            console.log(`玩家 ${player.name} 已準備就緒`);
+
+            // 廣播更新 (讓房主看到狀態打勾，按鈕變亮)
+            io.to(roomId).emit('roomUpdated', {
+                players: game.players.map(p => p.getPublicData()),
+                gameState: game.gameState,
+                pot: game.pot,
+                communityCards: [], 
+                currentTurn: null,
+                hostId: game.hostId
+            });
         }
     });
 

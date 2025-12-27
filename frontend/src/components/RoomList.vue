@@ -3,7 +3,6 @@
     <div class="header-bar">
       <button class="btn-back" @click="$emit('back')">⬅ 返回</button>
       <h2 class="title">選擇房間</h2>
-      <button class="btn-refresh" @click="fetchRooms">🔄</button>
     </div>
 
     <div class="grid-container">
@@ -11,6 +10,7 @@
         v-for="room in rooms" 
         :key="room.id" 
         class="room-card"
+        :class="{ 'card-disabled': isRoomUnavailable(room) }"
         @click="selectRoom(room)"
       >
         <div class="room-icon">
@@ -26,7 +26,12 @@
             <span class="player-count">👤 {{ room.players }}/{{ room.maxPlayers }}</span>
           </div>
         </div>
-        <button class="btn-join">加入</button>
+        <button 
+          class="btn-join"
+          :disabled="isRoomUnavailable(room)"
+        >
+          {{ getButtonText(room) }}
+        </button>
       </div>
 
       <div v-if="rooms.length === 0" class="empty-msg">
@@ -80,6 +85,17 @@ const newRoomName = ref('');
 const newRoomPwd = ref('');
 const inputPwd = ref('');
 const selectedRoomId = ref(null);
+
+const isRoomUnavailable = (room) => {
+  return room.status === 'PLAYING' || room.players >= (room.maxPlayers || 6);
+};
+
+// ▼▼▼ 【新增】根據狀態回傳按鈕文字 ▼▼▼
+const getButtonText = (room) => {
+  if (room.status === 'PLAYING') return '遊戲中';
+  if (room.players >= (room.maxPlayers || 6)) return '客滿';
+  return '加入';
+};
 
 const fetchRooms = () => {
   socket.emit('getRooms');
@@ -251,4 +267,27 @@ onUnmounted(() => {
 .modal-btns { display: flex; gap: 15px; justify-content: center; }
 .btn-confirm { background: #4facfe; color: white; border: none; padding: 12px 25px; border-radius: 10px; cursor: pointer; font-weight: bold; flex: 1; }
 .btn-cancel { background: #95a5a6; color: white; border: none; padding: 12px 25px; border-radius: 10px; cursor: pointer; font-weight: bold; flex: 1; }
+
+/* ▼▼▼ 【新增】停用狀態樣式 ▼▼▼ */
+
+/* 1. 整個卡片變暗，滑鼠游標變禁止符號 */
+.room-card.card-disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  filter: grayscale(80%); /* 讓它變黑白，更有「無法使用」的感覺 */
+}
+
+/* 移除停用卡片的 hover 效果 (原本卡片會上浮) */
+.room-card.card-disabled:hover {
+  transform: none;
+  box-shadow: 0 5px 15px rgba(0,0,0,0.1); /* 維持原本的影子，不要變大 */
+}
+
+/* 2. 按鈕變灰 */
+.btn-join:disabled {
+  background: #95a5a6;
+  border-bottom: 5px solid #7f8c8d;
+  cursor: not-allowed;
+  transform: none; /* 防止點擊動畫 */
+}
 </style>

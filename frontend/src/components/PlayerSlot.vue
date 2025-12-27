@@ -1,12 +1,17 @@
 <template>
-  <div class="player-pod" :class="{ 'is-active': player.isTurn, 'is-folded': player.status === 'FOLDED' }">
+  <div class="player-pod" :class="{ 'is-active': player.isTurn, 'is-folded': player.status === 'FOLDED', 'is-spectator': isSpectator}">
     
     <div class="avatar-wrapper">
       <img :src="player.avatar" class="avatar-img" alt="avatar" />
       
-      <div v-if="player.isDealer" class="dealer-btn">D</div>
       <span v-if="player.isHost" class="crown">👑</span>
     </div>
+
+    <transition name="pop-up">
+        <div v-if="actionFeedback" class="action-bubble" :class="actionFeedback.action">
+            {{ actionFeedback.text }}
+        </div>
+    </transition>
 
     <div class="info-panel">
       <div class="player-name">{{ player.name }}</div>
@@ -23,17 +28,23 @@
         <template v-if="player.cards && player.cards.length > 0">
             <img v-for="(card, i) in player.cards" :key="i" :src="getCardSrc(card)" class="mini-card-img"/>
         </template>
+
         <template v-else-if="player.hasCards && player.status !== 'FOLDED'">
             <img src="/cards/back.png" class="mini-card-img" />
             <img src="/cards/back.png" class="mini-card-img" />
         </template>
+
+        <div v-else-if="player.status === 'WAITING' || player.status === 'SIT_OUT'" class="spectator-label">
+            等待遊玩中
+        </div>
     </div>
+
 
   </div>
 </template>
 
 <script setup>
-defineProps(['player']);
+defineProps(['player', 'actionFeedback']);
 
 // 圖片路徑轉換函式 (保持不變)
 const getCardSrc = (cardObj) => {
@@ -51,9 +62,32 @@ const getCardSrc = (cardObj) => {
 .player-pod {
   display: flex; flex-direction: column; align-items: center;
   position: relative; width: 120px; /* 固定寬度 */
-  transition: all 0.3s;
+  transition: all 0.3s ease;
 }
+
 .is-folded { opacity: 0.6; filter: grayscale(80%); }
+
+/* 觀戰者稍微變暗一點，區分場上玩家 */
+.is-spectator {
+  opacity: 0.5 !important;       /* 更透明一點，原本 0.8 可能看不出來 */
+  transform: scale(0.85);        /* 縮更小，原本 0.95 可能不明顯 */
+  filter: grayscale(100%);       /* 讓觀戰者變成黑白，更明顯 */
+}
+
+/* 觀戰中文字標籤 */
+.spectator-label {
+  color: #bdc3c7;         
+  font-weight: bold;
+  font-size: 0.8rem;
+  background: rgba(0,0,0,0.6); /* 背景深一點 */
+  padding: 4px 10px;
+  border-radius: 12px;
+  margin-top: 0;
+  line-height: 1;
+  letter-spacing: 1px;
+  border: 1px solid #7f8c8d;
+  white-space: nowrap;
+}
 
 /* --- 1. 頭像樣式 --- */
 .avatar-wrapper {
@@ -107,6 +141,47 @@ const getCardSrc = (cardObj) => {
 .allin-text { color: #e74c3c; font-weight: 900; letter-spacing: 1px; }
 
 /* --- 3. 手牌區域 --- */
-.hand-cards-slot { display: flex; gap: 4px; margin-top: 8px; height: 40px; justify-content: center; }
+.hand-cards-slot { display: flex; gap: 4px; margin-top: 8px; height: 40px; justify-content: center; align-items: center; }
 .mini-card-img { width: 28px; height: auto; border-radius: 3px; box-shadow: 0 2px 4px rgba(0,0,0,0.4); }
+
+/* 動作氣泡樣式 */
+.action-bubble {
+  position: absolute;
+  top: 15px; /* 蓋在頭像中間偏上 */
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20; /* 最上層 */
+  
+  padding: 5px 12px;
+  border-radius: 20px;
+  font-weight: 900;
+  font-size: 1rem;
+  color: white;
+  white-space: nowrap;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+  border: 2px solid white;
+  text-shadow: 1px 1px 0 rgba(0,0,0,0.5);
+}
+
+/* 不同動作的顏色 */
+.action-bubble.fold { background: #7f8c8d; } /* 灰 */
+.action-bubble.check { background: #e67e22; } /* 橘 */
+.action-bubble.call { background: #3498db; } /* 藍 */
+.action-bubble.raise { background: #2ecc71; transform: translateX(-50%) scale(1.1); } /* 綠 (稍微大一點) */
+.action-bubble.allin { 
+    background: #e74c3c; 
+    font-size: 1.2rem; 
+    border-color: #f1c40f; 
+    box-shadow: 0 0 15px #e74c3c;
+}
+
+/* 氣泡彈出動畫 */
+.pop-up-enter-active { animation: bubble-pop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+.pop-up-leave-active { transition: opacity 0.3s; }
+.pop-up-leave-to { opacity: 0; }
+
+@keyframes bubble-pop {
+  0% { opacity: 0; transform: translateX(-50%) scale(0.5) translateY(20px); }
+  100% { opacity: 1; transform: translateX(-50%) scale(1) translateY(0); }
+}
 </style>

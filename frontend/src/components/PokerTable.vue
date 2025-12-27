@@ -1,7 +1,5 @@
 <template>
   <div class="table-wrapper">
-    
-    <button class="btn-back" @click="$emit('leave')">⬅</button>
     <transition name="pop-up">
       <div v-if="gameResult" class="victory-overlay">
         <div class="victory-modal">
@@ -16,23 +14,38 @@
               :key="winner.id" 
               class="winner-card"
             >
-              <div class="winner-info">
-                <span class="winner-name">{{ winner.name }}</span>
-                <span class="hand-type-badge">{{ winner.handTitle }}</span>
+              <div class="winner-header">
+                <div class="winner-info">
+                  <span class="winner-name">{{ winner.name }}</span>
+                  <span class="win-amount">+ ${{ winner.profit.toLocaleString() }}</span>
+                </div>
+                <div class="hand-type-badge">{{ winner.handTitle }}</div>
               </div>
               
-              <div class="winner-hand-cards">
-                <img 
-                  v-for="(card, i) in getWinnerCards(winner.id)" 
-                  :key="i" 
-                  :src="getCardSrc(card)" 
-                  class="big-card-img"
-                />
+              <div class="card-section">
+                <div class="section-label">底牌</div>
+                <div class="cards-row">
+                  <img 
+                    v-for="(card, i) in getWinnerCards(winner.id)" 
+                    :key="'hole-'+i" 
+                    :src="getCardSrc(card)" 
+                    class="result-card-img"
+                  />
+                </div>
               </div>
-              
-              <div class="win-amount">
-                + ${{ winner.profit.toLocaleString() }}
+
+              <div class="card-section" v-if="winner.winningCombination && winner.winningCombination.length > 0">
+                <div class="section-label">獲勝組合 ({{ winner.handTitle }})</div>
+                <div class="cards-row highlight-bg">
+                  <img 
+                    v-for="(card, i) in winner.winningCombination" 
+                    :key="'best-'+i" 
+                    :src="getCardSrc(card)" 
+                    class="result-card-img"
+                  />
+                </div>
               </div>
+
             </div>
           </div>
 
@@ -43,33 +56,74 @@
         </div>
       </div>
     </transition>
-    <div v-if="roomData?.gameState === 'LOBBY'" class="start-game-overlay">
+    <div 
+      v-if="roomData?.gameState === 'LOBBY' || myPlayer?.status === 'WAITING'" 
+      class="start-game-overlay"
+    >
       
       <div class="waiting-box">
-        <h2 class="waiting-title">準備室</h2>
-        <div class="waiting-info">
-          目前人數: <span class="highlight-num">{{ roomData?.players?.length || 0 }}</span> / 6
+    
+        <h2 class="waiting-title">
+            {{ roomData?.gameState === 'LOBBY' ? '準備室' : '遊戲進行中' }}
+        </h2>
+
+        <div v-if="roomData?.gameState === 'LOBBY'" class="lobby-player-list">
+            <div v-for="p in roomData?.players" :key="p.id" class="lobby-player-item">
+                <span class="p-name">{{ p.name }}</span>
+                <span v-if="p.id === roomData.hostId">👑</span>
+                <span v-else-if="p.isReady" class="ready-icon">✅</span>
+                <span v-else class="waiting-icon">⏳</span>
+            </div>
         </div>
 
-        <div v-if="isHost">
-          <button 
-            class="btn-start" 
-            @click="startGame" 
-            :disabled="(roomData?.players?.length || 0) < 2"
-          >
-            開始遊戲
-          </button>
-          <div v-if="(roomData?.players?.length || 0) < 2" class="hint-text">
-            (至少需要 2 人才能開始)
+        <div v-else class="mid-game-status">
+          <div class="spectator-icon">👀</div>
+          <div class="spectator-hint">
+            遊戲正在進行中...<br>
+            <span class="sub-hint">本局結束後您將自動加入</span>
           </div>
         </div>
 
-        <div v-else class="waiting-text">
-          等待房主 ({{ hostName }}) 開始遊戲...
+        <div class="waiting-info">
+          目前人數: <span class="highlight-num">{{ roomData?.players?.length || 0 }}</span> / 6
+        </div>
+        <div v-if="roomData?.gameState === 'LOBBY'">
+            <div v-if="isHost">
+                <button 
+                    class="btn-start" 
+                    @click="startGame" 
+                    :disabled="(roomData?.players?.length || 0) < 2 || !allPlayersReady"
+                >
+                    {{ !allPlayersReady ? '等待玩家...' : '開始遊戲' }}
+                </button>
+                
+                <div v-if="(roomData?.players?.length || 0) < 2" class="hint-text">
+                    (至少需要 2 人才能開始)
+                </div>
+            </div>
+            
+            <div v-else class="waiting-text">
+                <span v-if="myPlayer?.isReady">等待房主開始遊戲...</span>
+                <span v-else>請確認狀態...</span>
+            </div>
+        </div>
+
+      </div>
+    </div>
+
+    <div v-if="showContinueModal" class="continue-overlay">
+      <div class="continue-box">
+        <h2 class="continue-title">本局結束</h2>
+        <div class="current-chips">
+            目前籌碼: <span class="money">${{ myPlayer?.chips?.toLocaleString() }}</span>
+        </div>
+        <div class="continue-btns">
+            <button class="btn-quit" @click="$emit('leave')">退出遊戲</button>
+            <button class="btn-continue" @click="handleContinue">繼續遊玩</button>
         </div>
       </div>
-
     </div>
+
     <div class="poker-table" ref="tableRef">
       
       <div class="community-cards">
@@ -97,7 +151,7 @@
         class="player-position"
         :style="getSeatStyle(index, rotatedPlayers.length)"
       >
-        <PlayerSlot :player="player" />
+        <PlayerSlot :player="player" :action-feedback="actionFeedbacks[player.id]"/>
         <div v-if="player.isDealer" class="dealer-btn">D</div>
       </div>
     </div>
@@ -156,12 +210,15 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, reactive } from 'vue';
+import { ref, computed, onMounted, onUnmounted, reactive, watch } from 'vue';
 import PlayerSlot from './PlayerSlot.vue'; 
 import socket from '../services/socket'; 
 
 const props = defineProps(['roomData', 'roomId']);
 const emit = defineEmits(['leave']);
+const showContinueModal = ref(false); // 控制繼續遊玩視窗
+const justFinishedGame = ref(false);  // 標記是否剛打完一局
+const actionFeedbacks = reactive({}); // 用來存每個玩家的動作訊息 { 'player_id': { text: 'Call $100', type: 'call' } }
 
 // --- 狀態變數 ---
 const gameResult = ref(null);
@@ -196,14 +253,76 @@ const getWinnerCards = (winnerId) => {
   return player ? player.cards : [];
 };
 
+const handleContinue = () => {
+    socket.emit('playerReady', props.roomId);
+    showContinueModal.value = false;
+    // 關閉後，就會露出底下的 start-game-overlay (顯示「等待房主開始...」)
+};
+
+const allPlayersReady = computed(() => {
+    if (!props.roomData?.players) return false;
+    return props.roomData.players.every(p => p.isReady);
+});
+
 // --- Socket 監聽 ---
 onMounted(() => {
   socket.on('receiveCards', (data) => myCards.value = data.myCards);
-  socket.on('gameEnded', (data) => gameResult.value = data);
+
+  socket.on('gameEnded', (data) => {
+    // 標記剛結束一局
+    justFinishedGame.value = true;
+    // 2. 設定延遲 4 秒
+    setTimeout(() => {
+        // 4秒後，把資料填入，這會觸發 <div v-if="gameResult"> 的彈窗顯示
+        gameResult.value = data; 
+    }, 4000);
+  });
+
   socket.on('gameStarted', () => {
     myCards.value = [];
     showRaiseSlider.value = false;
     gameResult.value = null;
+  });
+
+  socket.on('roomUpdated', (data) => {
+    // 如果狀態變回 LOBBY，且剛打完一局
+    if (data.gameState === 'LOBBY' && justFinishedGame.value) {
+        
+        // 關閉結算榜單
+        gameResult.value = null;
+        // 清空手牌顯示
+        myCards.value = [];
+
+        // 如果我是房主 -> 不用彈窗，直接顯示原本的「準備室」(start-game-overlay)
+        // 如果我是閒家 -> 顯示「繼續/退出」彈窗
+        if (!isHost.value) {
+            showContinueModal.value = true;
+        }
+
+        justFinishedGame.value = false; // 重置標記
+    }
+  });
+
+  socket.on('playerActed', (data) => {
+    const { playerId, action, value } = data;
+
+    // 1. 決定要顯示什麼文字
+    let text = '';
+    if (action === 'fold') text = '棄牌';
+    else if (action === 'check') text = '過牌';
+    else if (action === 'call') text = `跟注 $${value}`;
+    else if (action === 'raise') text = `加注 $${value}`;
+    else if (action === 'allin') text = 'ALL IN';
+
+    // 2. 設定到 reactive 物件中
+    actionFeedbacks[playerId] = { text, action };
+
+    setTimeout(() => {
+        // 為了避免蓋掉新的動作（如果手速很快），檢查一下是否還是同一個動作
+        if (actionFeedbacks[playerId]?.text === text) {
+            delete actionFeedbacks[playerId];
+        }
+    }, 2000);
   });
   
   updateTableSize();
@@ -250,7 +369,7 @@ const rotatedPlayers = computed(() => {
   return others;
 });
 
-// ▼▼▼ 【核心修改】固定座位表配置 ▼▼▼
+// ▼▼▼ 固定座位表配置 ▼▼▼
 // 這裡定義的是「相對位置 multiplier」
 // X: -1(最左) ~ 0(中間) ~ 1(最右)
 // Y: -1(最上) ~ 0(中間) ~ 1(最下)
@@ -387,6 +506,23 @@ const sendAction = (type, amount = 0) => {
 .waiting-text { color: #2980b9; font-weight: bold; animation: pulse 1.5s infinite; }
 @keyframes pulse { 0% { opacity: 0.6; } 50% { opacity: 1; } 100% { opacity: 0.6; } }
 
+.lobby-player-list {
+  display: flex; flex-direction: column; gap: 10px;
+  margin-bottom: 20px; text-align: left;
+  background: #f8f9fa; padding: 15px; border-radius: 10px;
+  max-height: 200px; overflow-y: auto;
+}
+
+.lobby-player-item {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 1.1rem; border-bottom: 1px solid #eee; padding-bottom: 5px;
+}
+
+.p-name { font-weight: bold; color: #2c3e50; }
+.ready-icon { color: #2ecc71; }
+.waiting-icon { color: #95a5a6; animation: spin 2s infinite linear; }
+
+@keyframes spin { 100% { transform: rotate(360deg); } }
 
 .poker-table {
   /* 使用 vw (視窗寬度) 讓桌子隨螢幕縮放 */
@@ -477,41 +613,47 @@ const sendAction = (type, amount = 0) => {
 
 .winner-card {
   background: #2c3e50;
-  padding: 20px;
+  padding: 15px;
   border-radius: 15px;
   margin-bottom: 20px;
   border: 2px solid #34495e;
+  text-align: left; /* 改成靠左對齊比較整齊 */
 }
 
-.winner-info {
-  display: flex; justify-content: center; align-items: center; gap: 15px;
-  margin-bottom: 15px;
+.winner-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px;
 }
 
-.winner-name {
-  color: white; font-size: 1.8rem; font-weight: bold;
+.winner-name { color: white; font-size: 1.5rem; font-weight: bold; }
+.win-amount { color: #f1c40f; font-size: 1.5rem; font-weight: 900; margin-left: 10px;}
+
+.card-section {
+  margin-top: 10px;
 }
 
-.hand-type-badge {
-  background: #e74c3c; color: white;
-  padding: 5px 15px; border-radius: 20px;
-  font-weight: bold; font-size: 1rem;
+.section-label {
+  color: #bdc3c7; font-size: 0.9rem; margin-bottom: 5px; font-weight: bold;
+}
+
+.cards-row {
+  display: flex; gap: 8px;
+}
+
+/* 獲勝組合加一點背景凸顯 */
+.highlight-bg {
+  background: rgba(241, 196, 15, 0.1); /* 淡淡的金黃色背景 */
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px dashed rgba(241, 196, 15, 0.3);
+}
+
+.result-card-img {
+  width: 60px; /* 稍微縮小一點，不然 5 張牌會太寬 */
+  height: auto;
+  border-radius: 4px;
   box-shadow: 0 2px 5px rgba(0,0,0,0.3);
 }
-
-.winner-hand-cards {
-  display: flex; justify-content: center; gap: 10px; margin: 15px 0;
-}
-
-/* 這裡設定贏家的牌要很大張 */
-.big-card-img {
-  width: 100px; /* 手牌寬度 */
-  height: auto;
-  border-radius: 6px;
-  box-shadow: 0 5px 15px rgba(0,0,0,0.5);
-  transition: transform 0.2s;
-}
-.big-card-img:hover { transform: scale(1.1); }
 
 .win-amount {
   color: #f1c40f; font-size: 2.5rem; font-weight: 900;
@@ -522,7 +664,67 @@ const sendAction = (type, amount = 0) => {
   color: #7f8c8d; font-weight: bold; margin-top: 10px;
 }
 
-/* 簡單的彈出動畫 */
+/* 結算畫面簡單的彈出動畫 */
 .pop-up-enter-active, .pop-up-leave-active { transition: all 0.3s ease; }
 .pop-up-enter-from, .pop-up-leave-to { opacity: 0; transform: scale(0.8); }
+
+/* 繼續遊玩彈窗 */
+.continue-overlay {
+  position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+  background: rgba(0, 0, 0, 0.85); z-index: 2500; /* 比準備室高 */
+  display: flex; justify-content: center; align-items: center;
+}
+
+.continue-box {
+  background: white; padding: 30px 50px; border-radius: 20px;
+  text-align: center; border: 5px solid #3498db;
+  box-shadow: 0 0 30px rgba(52, 152, 219, 0.5);
+  animation: popIn 0.3s;
+}
+
+.continue-title { font-size: 2rem; color: #2c3e50; margin-bottom: 20px; }
+.current-chips { font-size: 1.5rem; margin-bottom: 30px; font-weight: bold; color: #555; }
+.money { color: #f1c40f; font-size: 1.8rem; margin-left: 10px; }
+
+.continue-btns { display: flex; gap: 20px; }
+.btn-quit {
+  background: #e74c3c; color: white; border: none; padding: 12px 30px;
+  border-radius: 10px; font-size: 1.2rem; font-weight: bold; cursor: pointer;
+}
+.btn-continue {
+  background: #2ecc71; color: white; border: none; padding: 12px 30px;
+  border-radius: 10px; font-size: 1.2rem; font-weight: bold; cursor: pointer;
+}
+.btn-quit:hover, .btn-continue:hover { transform: scale(1.05); }
+
+
+/* 中途加入的觀戰顯示 */
+.mid-game-status {
+  margin: 20px 0;
+  padding: 20px;
+}
+
+.spectator-icon {
+  font-size: 4rem;
+  margin-bottom: 10px;
+  animation: float 3s ease-in-out infinite;
+}
+
+.spectator-hint {
+  font-size: 1.2rem;
+  font-weight: bold;
+  color: #2c3e50;
+  line-height: 1.5;
+}
+
+.sub-hint {
+  font-size: 0.9rem;
+  color: #7f8c8d;
+}
+
+@keyframes float {
+  0% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
+  100% { transform: translateY(0px); }
+}
 </style>
